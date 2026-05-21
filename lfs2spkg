@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+
+set -e
+
+declare -A packages
+
+sources=()
+md5sums=()
+have_marker=""
+marker_val=""
+
+builddir=$LFS/var/lib/spkg/build
+
+fail() {
+        >&2 echo "$@"
+        exit 1
+}
+
+[[ -d $builddir ]] || fail 'spkg build directory missing'
+
+is_marker_set() {
+        [[ $have_marker = 'yes' ]]
+}
+
+get_marker() {
+        echo "$marker_val"
+}
+
+set_marker() {
+        marker_val="$1"
+        have_marker='yes'
+}
+
+unset_marker() {
+        marker_val=''
+        have_marker=''
+}
+
+read_marker() {
+        peek_marker
+        accept_marker
+}
+
+peek_marker() {
+        local val
+
+        if ! is_marker_set; then
+                read -r val
+                set_marker "$val"
+        fi
+        get_marker
+}
+
+accept_marker() {
+        unset_marker
+}
+
+
+is_footer() {
+        [[ $1 = '===' ]]
+}
+
+consume_footer() {
+        marker=${ read_marker; }
+        is_footer "$marker" || fail "Expected footer: $marker"
+}
+
+is_header() {
+        [[ $1 = "=== ${2:?}" ]]
+}
+
+consume_header_if() {
+        header=${1:?}
+        marker=${ peek_marker; }
+        if is_header "$marker" "$header"; then
+                accept_marker
+        else
+                return 1
+        fi
+}
+
+consume_header() {
+        header=${1:?}
+        marker=${ read_marker; }
+        is_header "$marker" "$header" || fail "Expected $header header: $marker"
+}
+
+
+start_code() {
+        section=${1:?}
+         printf '\n%s() {\n' $section
+         if [[ $section = 'build' ]]; then
+                 printf '    cd $pkgname-$pkgver\n\n'
+         fi
+}
+
+end_code() {
+        printf '}\n'
+}
+
+is_function() {
+        [[ ${ type -t "${1:?}"; } = 'function' ]]
+}
+
+passthru_filter() {
+        local line
+
+        while IFS= read -r line; do
+                printf '%s\n' "$line"
+        done
+}
+
+footer_filter() {
+        local line heredoc
+
+        while IFS= read -r line; do
+                is_footer "$line" && return 0
+                if [[ -z $heredoc ]]; then
+                        printf '    %s\n' "$line"
+                        if [[ $line =~ '<< "EOF"'$ ]]; then
+                                heredoc='heredoc'
+                        fi
+                else
+                        printf '%s\n' "$line"
+                        if [[ $line == "EOF" ]]; then
+                                heredoc=''
+                        fi
+                fi
+        done
+}
+
+spkg_build_filter() {
+        sed \
+                -e 's| $LFS/| $pkgdir/|g' \
+                -e 's| /| $pkgdir/|g' \
+                -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g'
+}
+
+spkg_check_filter() {
+        sed \
+                -e 's| $LFS/| $pkgdir/|g' \
+                -e 's| /| $pkgdir/|g' \
+                -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g'
+}
+
+spkg_package_filter() {
+        sed \
+                -e 's| $LFS/| $pkgdir/|g' \
+                -e 's| /| $pkgdir/|g' \
+                -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g' \
+                -e 's|DESTDIR=$LFS||g' \
+                -e 's|make\(.*\) install|make DESTDIR=$pkgdir\1 install|g' \
+                -e 's|ninja\(.*\) install|DESTDIR=$pkgdir ninja\1 install|g'
+}
+
+filter_section() {
+        local section filter_match
+
+        section=${1:?}
+        filter_match=0
+
+        spkg_filter="spkg_${section}_filter"
+        package_filter="${section}_filter"
+
+        is_function "$spkg_filter" && filter_match=1
+        is_function "$package_filter" && (( filter_match += 2 ))
+
+        case $filter_match in
+                3) footer_filter | $spkg_filter | $package_filter ;;
+                2) footer_filter | $package_filter ;;
+                1) footer_filter | $spkg_filter ;;
+                *) footer_filter ;;
+        esac
+}
+
+process_code() {
+        start_code "$1"
+        filter_section "$1"
+        end_code
+}
+
+add_source() {
+        sources+=(${1:?})
+        md5sums+=(${2:?})
+}
+
+end_sources() {
+        printf 'sources=(\n'
+        printf '         "%s"\n' "${sources[@]}"
+        printf '        )\n'
+        printf 'md5sums=(\n'
+        printf '         %s\n' "${md5sums[@]}"
+        printf '        )\n'
+        sources=()
+        md5sums=()
+}
+
+process_sources() {
+        local url md5
+
+        read -r url
+        while ! is_footer "$url"; do
+                read -r md5
+                add_source "$url" "$md5"
+                read -r url
+        done
+
+        end_sources
+}
+
+next_package_release() {
+        local r
+
+        r=${packages[$package_name]}
+        if [[ -z $r ]]; then
+                r=1
+        else
+                (( r++ ))
+        fi
+        packages[$package_name]=$r
+        package_release=$r
+}
+
+begin_package() {
+        package_spec="$package_name-$package_version-$package_release"
+        [[ ! -d $builddir/$package_spec ]] || fail "Build directory exists for $package_spec"
+        mkdir "$builddir/$package_spec"
+        package_file="$builddir/$package_spec/SPKGBUILD"
+
+        cat << EOF > $package_file
+pkgname=$package_name
+pkgver=$package_version
+pkgrel=$package_release
+EOF
+}
+
+process_info() {
+        read -r package_name
+        package_name=${package_name%-pass[0-9]}
+        package_name=${package_name,,}
+        read -r package_version
+        next_package_release
+
+        begin_package
+
+        consume_footer
+}
+
+load_filters() {
+        # remove filters from previous package
+        for section in build check package post_install; do
+                unset "${section}_filter"
+        done
+
+        # load new filters
+        if [[ -f "${package_spec}-filters" ]]; then
+                source "${package_spec}-filters"
+        fi
+}
+
+process_package() {
+        # process info sets $package_file so cannot be in block below
+        consume_header 'info' && process_info
+        {
+                consume_header 'sources' && process_sources
+                
+                # <package spec>-filters file can provide custom filters
+                # for build, check, package, post_install
+                # can also add code when sourced
+                load_filters
+
+                # From lfs book we have build/test/install
+                # spkg functions are build/check/package
+                consume_header 'build' && process_code 'build'
+                if consume_header_if 'test'; then
+                        process_code 'check'
+                fi
+                consume_header 'install' && process_code 'package'
+                consume_header 'post-install' && process_code 'post_install'
+        } >> $package_file
+}
+
+process_packages() {
+        while consume_header_if 'package'; do
+                process_package
+                consume_footer
+                echo "spkg build $package_spec && spkg install -y $package_spec"
+        done
+}
+
+begin_chapter() {
+        chapter_file="chapter$chapter_number"
+
+        cat << EOF > $chapter_file
+#!/usr/bin/env bash
+# lfs2spkg build/install file for
+# $chapter_title
+
+set -e
+
+EOF
+
+}
+
+process_chapter_heading() {
+        read -r chapter_number
+        read -r chapter_title
+
+        begin_chapter
+}
+
+process_chapter() {
+        process_chapter_heading
+        process_packages >> $chapter_file
+}
+
+process_chapters() {
+        while consume_header_if 'chapter'; do
+                process_chapter
+                consume_footer
+        done
+}
+
+process_lfs2spkg() {
+        if consume_header 'lfs2spkg'; then
+                process_chapters
+        fi
+}
+
+if [[ ! -f profiledbook.xml ]]; then
+        if (( $# == 0 )); then
+                fail "lfs book directory required"
+        fi
+
+        lfsdir=$1
+
+        xsltproc --nonet \
+                --xinclude \
+                --stringparam profile.arch default \
+                --stringparam profile.revision systemd \
+                --output profiledbook.xml \
+                $lfsdir/stylesheets/lfs-xsl/profile.xsl \
+                $lfsdir/index.xml
+fi
+
+xsltproc --nonet lfs2spkg.xsl profiledbook.xml | process_lfs2spkg

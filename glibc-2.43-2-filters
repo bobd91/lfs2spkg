@@ -1,0 +1,7 @@
+package_filter() {
+        sed -e 's|touch $pkgdir/etc/ld.so.conf|touch /etc/ld.so.conf|'
+}
+
+post_install_filter() {
+        sed -e "s|/usr/share/zoneinfo/<xxx>|$(readlink /etc/localtime)|"
+}

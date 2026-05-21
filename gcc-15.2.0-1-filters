@@ -1,0 +1,2 @@
+printf "replaces+=(gcc-libstdc++)\n"
+
