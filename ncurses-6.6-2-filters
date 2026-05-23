@@ -1,0 +1,6 @@
+package_filter() {
+        sed \
+                -e 's| DESTDIR=$PWD/dest||' \
+                -e 's|-i dest/|-i $pkgdir/|'\
+                -e '/^.*cp --remove-destination.*$/d'
+}

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2016 # we have lots of $.... in single quotes
+
 set -e
 
 declare -A packages
@@ -87,11 +89,10 @@ consume_header() {
 
 
 start_code() {
+        local section
+
         section=${1:?}
-         printf '\n%s() {\n' $section
-         if [[ $section = 'build' ]]; then
-                 printf '    cd $pkgname-$pkgver\n\n'
-         fi
+        printf '%s() {\n' "$section"
 }
 
 end_code() {
@@ -102,19 +103,27 @@ is_function() {
         [[ ${ type -t "${1:?}"; } = 'function' ]]
 }
 
-passthru_filter() {
-        local line
+filter_code() {
+        local line heredoc first_line
 
+        section=${1:?}
+
+        # Default for all build functions
+        # Placed here so package can filter it out if they need to
+        if [[ $section = 'build' ]]; then
+                printf '    cd $pkgname-$pkgver\n'
+        fi
+
+        first_line=1
         while IFS= read -r line; do
-                printf '%s\n' "$line"
-        done
-}
-
-footer_filter() {
-        local line heredoc
-
-        while IFS= read -r line; do
-                is_footer "$line" && return 0
+                [[ $first_line ]] && first_line=''
+                if is_footer "$line"; then
+                        if [[ $first_line ]]; then
+                                # Force trigger of package filters on empty input
+                                printf '\n'
+                        fi
+                        break
+                fi
                 if [[ -z $heredoc ]]; then
                         printf '    %s\n' "$line"
                         if [[ $line =~ '<< "EOF"'$ ]]; then
@@ -153,7 +162,7 @@ spkg_package_filter() {
                 -e 's|ninja\(.*\) install|DESTDIR=$pkgdir ninja\1 install|g'
 }
 
-filter_section() {
+filter_package_code() {
         local section filter_match
 
         section=${1:?}
@@ -166,22 +175,35 @@ filter_section() {
         is_function "$package_filter" && (( filter_match += 2 ))
 
         case $filter_match in
-                3) footer_filter | $spkg_filter | $package_filter ;;
-                2) footer_filter | $package_filter ;;
-                1) footer_filter | $spkg_filter ;;
-                *) footer_filter ;;
+                3) $spkg_filter | $package_filter ;;
+                2) $package_filter ;;
+                1) $spkg_filter ;;
+                *) cat ;;
         esac
 }
 
+filter_empty_code() {
+        sed -e '/^[[:space:]]*$/d'
+}
+
 process_code() {
-        start_code "$1"
-        filter_section "$1"
-        end_code
+        local section code
+
+        section=${1:?}
+        readarray code < <(filter_code "$section" |
+                           filter_package_code "$section" | 
+                           filter_empty_code)
+
+        if (( ${#code[@]} )); then
+                start_code "$section"
+                printf "%s" "${code[@]}"
+                end_code
+        fi
 }
 
 add_source() {
-        sources+=(${1:?})
-        md5sums+=(${2:?})
+        sources+=("${1:?}")
+        md5sums+=("${2:?}")
 }
 
 end_sources() {
@@ -227,7 +249,7 @@ begin_package() {
         mkdir "$builddir/$package_spec"
         package_file="$builddir/$package_spec/SPKGBUILD"
 
-        cat << EOF > $package_file
+        cat << EOF > "$package_file"
 pkgname=$package_name
 pkgver=$package_version
 pkgrel=$package_release
@@ -254,6 +276,7 @@ load_filters() {
 
         # load new filters
         if [[ -f "${package_spec}-filters" ]]; then
+                # shellcheck disable=SC1090 # can't avoid this
                 source "${package_spec}-filters"
         fi
 }
@@ -277,7 +300,7 @@ process_package() {
                 fi
                 consume_header 'install' && process_code 'package'
                 consume_header 'post-install' && process_code 'post_install'
-        } >> $package_file
+        } >> "$package_file"
 }
 
 process_packages() {
@@ -291,7 +314,7 @@ process_packages() {
 begin_chapter() {
         chapter_file="chapter$chapter_number"
 
-        cat << EOF > $chapter_file
+        cat << EOF > "$chapter_file"
 #!/usr/bin/env bash
 # lfs2spkg build/install file for
 # $chapter_title
@@ -311,7 +334,7 @@ process_chapter_heading() {
 
 process_chapter() {
         process_chapter_heading
-        process_packages >> $chapter_file
+        process_packages >> "$chapter_file"
 }
 
 process_chapters() {
@@ -339,8 +362,8 @@ if [[ ! -f profiledbook.xml ]]; then
                 --stringparam profile.arch default \
                 --stringparam profile.revision systemd \
                 --output profiledbook.xml \
-                $lfsdir/stylesheets/lfs-xsl/profile.xsl \
-                $lfsdir/index.xml
+                "$lfsdir/stylesheets/lfs-xsl/profile.xsl" \
+                "$lfsdir/index.xml"
 fi
 
 xsltproc --nonet lfs2spkg.xsl profiledbook.xml | process_lfs2spkg
