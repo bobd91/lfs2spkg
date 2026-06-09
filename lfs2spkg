@@ -357,6 +357,13 @@ if [[ ! -f profiledbook.xml ]]; then
 
         lfsdir=$1
 
+        pushd "$lfsdir" > /dev/null
+        # even though scripts are for the no longer supported sysv init
+        # the book still xincludes them!
+        [[ -f process-scripts.sh ]] && bash process-scripts.sh
+        [[ -f git-version.sh ]] && bash git-version.sh systemd 
+        popd > /dev/null
+
         xsltproc --nonet \
                 --xinclude \
                 --stringparam profile.arch default \

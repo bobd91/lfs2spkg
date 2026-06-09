@@ -1,0 +1,3 @@
+package_filter() {
+        sed -e 's|bin/sh|/usr/bin/sh|'
+}

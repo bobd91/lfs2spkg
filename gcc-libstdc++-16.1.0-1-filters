@@ -1,0 +1,3 @@
+build_filter() {
+    sed -e 's|cd \$pkgname-|cd gcc-|'
+}
