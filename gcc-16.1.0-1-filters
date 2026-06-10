@@ -1,3 +1,5 @@
+printf "replaces+=(gcc-libstdc++)\n"
+
 package_filter() {
         sed -e 's|\$(\$LFS_TGT-gcc -print-file-name=include)|$LFS/tools/lib/gcc/$LFS_TGT/$pkgver/include|'
 }
