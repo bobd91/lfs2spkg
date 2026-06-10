@@ -1,0 +1,6 @@
+package_filter() {
+        cat -
+        # no way to stop perl installing manual pages with DESTDIR install
+        # so allow them to go in root dir then remove them
+        echo 'rm $pkgdir/*.0'
+}
