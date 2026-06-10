@@ -1,7 +1,0 @@
-build_filter() {
-        sed -e 's|cd \$pkgname-|cd linux-|'
-}
-package_filter() {
-        echo "mkdir -p \$pkgdir/usr"
-        cat -
-}

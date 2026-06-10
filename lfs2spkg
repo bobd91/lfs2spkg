@@ -108,12 +108,6 @@ filter_code() {
 
         section=${1:?}
 
-        # Default for all build functions
-        # Placed here so package can filter it out if they need to
-        if [[ $section = 'build' ]]; then
-                printf '    cd $pkgname-$pkgver\n'
-        fi
-
         first_line=1
         while IFS= read -r line; do
                 [[ $first_line ]] && first_line=''
