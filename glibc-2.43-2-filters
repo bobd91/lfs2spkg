@@ -1,7 +1,3 @@
 package_filter() {
         sed -e '/^.*touch.*ld.so.conf$/d'
 }
-
-post_install_filter() {
-        sed -e "s|/usr/share/zoneinfo/<xxx>|$(readlink /etc/localtime)|"
-}

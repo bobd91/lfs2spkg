@@ -135,21 +135,21 @@ filter_code() {
 spkg_build_filter() {
         sed \
                 -e 's| $LFS/| $pkgdir/|g' \
-                -e 's| /| $pkgdir/|g' \
+                -e '/ \/dev\//! s| /| $pkgdir/|g' \
                 -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g'
 }
 
 spkg_check_filter() {
         sed \
                 -e 's| $LFS/| $pkgdir/|g' \
-                -e 's| /| $pkgdir/|g' \
+                -e '/ \/dev\//! s| /| $pkgdir/|g' \
                 -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g'
 }
 
 spkg_package_filter() {
         sed \
                 -e 's| $LFS/| $pkgdir/|g' \
-                -e 's| /| $pkgdir/|g' \
+                -e '/ \/dev\//! s| /| $pkgdir/|g' \
                 -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g' \
                 -e 's|DESTDIR=$LFS||g' \
                 -e 's|make\(.*\) install|make DESTDIR=$pkgdir\1 install|g' \
@@ -265,7 +265,7 @@ process_info() {
 load_filters() {
         # remove filters from previous package
         for section in build check package post_install; do
-                unset "${section}_filter"
+                unset -f "${section}_filter"
         done
 
         # load new filters
@@ -350,6 +350,7 @@ if [[ ! -f profiledbook.xml ]]; then
         fi
 
         lfsdir=$1
+	shift
 
         pushd "$lfsdir" > /dev/null
         # even though scripts are for the no longer supported sysv init

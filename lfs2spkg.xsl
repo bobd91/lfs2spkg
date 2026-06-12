@@ -81,16 +81,26 @@
         <xsl:text>===&#xA;</xsl:text>
 
         <xsl:text>=== install&#xA;</xsl:text>
-        <xsl:apply-templates select=".//userinput[@remap='install']"/>
+	<xsl:apply-templates select=".//userinput[@remap='install']"/>
+	<!-- special for glibc final pass -->
+	<xsl:apply-templates select=".//sect3[title='Adding nsswitch.conf']//screen[not(@role='nodump')]//userinput"/>
+	<xsl:apply-templates select=".//sect3[title='Configuring the Dynamic Loader']//screen[not(@role='nodump')]//userinput"/>
+	<!-- -->
         <xsl:text>===&#xA;</xsl:text>
 
         <xsl:text>=== post-install&#xA;</xsl:text>
-        <xsl:apply-templates select=".//userinput[@remap='adjust' or
-                                                  @remap='locale-test']"/>
-        <xsl:apply-templates select="sect2[@id='conf-glibc']//screen[not(@role='nodump')]/userinput"/>
+        <xsl:apply-templates select=".//userinput[@remap='adjust' or @remap='locale-test']"/>
         <xsl:text>===&#xA;</xsl:text>
 
         <xsl:text>===&#xA;</xsl:text>
+
+	<!-- separate tzdata from glibc final -->
+	<xsl:if test="@id='ch-system-glibc'">
+		<xsl:call-template name="tzdata">
+			<xsl:with-param name="tzconfig" select="sect2[@id='conf-glibc']/sect3[title='Adding Time Zone Data']//screen[not(@role='nodump')]//userinput"/>
+		</xsl:call-template>
+	</xsl:if>
+	<!-- -->
 </xsl:template>
 
 <xsl:template match="userinput">
@@ -174,5 +184,52 @@
                 </xsl:otherwise>
         </xsl:choose>
 </xsl:template>
+
+<!-- special to separate tzdata from glibc into own package
+-->
+<xsl:template name="tzdata">
+	<xsl:param name="tzconfig"/>
+        <xsl:variable name="tar-file"> 
+                <xsl:call-template name="tar-filename">
+			<xsl:with-param name="input" select="substring-after($tzconfig, 'tar -xf ../../')"/>
+                </xsl:call-template>
+        </xsl:variable>
+	<xsl:variable name="tzversion" select="substring-after(substring-before($tar-file, '.'), 'tzdata')"/>
+
+        <xsl:text>=== package&#xA;</xsl:text>
+
+        <xsl:text>=== info&#xA;</xsl:text>
+	<xsl:text>tzdata</xsl:text>
+        <xsl:text>&#xA;</xsl:text>
+        <xsl:value-of select="$tzversion"/>
+        <xsl:text>&#xA;</xsl:text>
+        <xsl:text>===&#xA;</xsl:text>
+
+        <xsl:text>=== sources&#xA;</xsl:text>
+        <xsl:call-template name="source-details">
+                <xsl:with-param name="section" select="'packages'"/>
+                <xsl:with-param name="file" select="$tar-file"/>
+        </xsl:call-template>
+        <xsl:text>===&#xA;</xsl:text>
+
+        <xsl:text>=== build&#xA;</xsl:text>
+        <xsl:text>===&#xA;</xsl:text>
+
+        <xsl:text>=== test&#xA;</xsl:text>
+        <xsl:text>===&#xA;</xsl:text>
+
+        <xsl:text>=== install&#xA;</xsl:text>
+        <xsl:value-of select="substring-after($tzconfig, '&#xA;')"/>
+        <xsl:text>&#xA;</xsl:text>
+	<xsl:apply-templates select="$tzconfig[position() > 1]"/>
+        <xsl:text>===&#xA;</xsl:text>
+
+        <xsl:text>=== post-install&#xA;</xsl:text>
+        <xsl:text>===&#xA;</xsl:text>
+
+
+        <xsl:text>===&#xA;</xsl:text>
+</xsl:template>
+
 
 </xsl:stylesheet>

@@ -1,14 +1,11 @@
-# Moved from final glibc build in LFS Book
-# It requires /etc/ld.so.conf before make install
-# But build will now not be run as root and so cannot write to /etc
-# If we run it in post_install of earlier glibc build
-# then it will be run as root and be there before final glibc build
+printf 'userfiles+=( /lib64/* )\n'
 
 post_install_filter() {
-        local line
-
+	# Moved from final glibc build in LFS Book
+	# It requires /etc/ld.so.conf before make install
+	# But build will now not be run as root and so cannot write to /etc
+	# If we run it in post_install of earlier glibc build
+	# then it will be run as root and be there before final glibc build
         printf '    touch $LFS/etc/ld.so.conf\n'
-        while IFS= read -r line; do
-                printf "%s\n" "$line"
-        done
+	cat -
 }

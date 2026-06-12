@@ -1,0 +1,5 @@
+package_filter() {
+	sed \
+	-e 's|ZONEINFO=/usr|ZONEINFO=$pkgdir/usr|' \
+	-e "s|/usr/share/zoneinfo/<xxx>|$(readlink /etc/localtime)|"
+}
