@@ -1,0 +1,22 @@
+# Appear as though everything is installed in /usr 
+# rather than /usr/pkg/python/usr
+package_filter() {
+        cat << "FOF"
+    sed -i \
+        -e '/.posix-prefix.: {/,/},/ s|{.*base}|/usr|;s|{platlibdir}|/lib|'
+        Lib/sysconfig/__init__.py
+FOF
+        cat -
+}
+
+post_install_filter() {
+        cat -
+        cat << "FOF"
+    cat << EOF > $installroot/python/usr/lib/python3.14/site-packages/sitecustomize.py
+import sys
+sys.path.remove('$installroot/python/usr/lib/python3.14/site-packages')
+sys.path.append('/usr/lib/python3.14/site-packages')
+EOF
+FOF
+}
+

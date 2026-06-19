@@ -1,6 +1,7 @@
 package_filter() {
         sed \
                 -e 's| DESTDIR=$PWD/dest||' \
-                -e 's|-i dest/|-i $pkgdir/|'\
-                -e '/^.*cp --remove-destination.*$/d'
+                -e 's|-i dest/|-i $pkgdir/|' \
+                -e '/^.*cp --remove-destination.*$/d' \
+                -e '/^.*\/usr\/share\/doc.*$/i    mkdir -p $pkgdir/usr/share/doc'
 }

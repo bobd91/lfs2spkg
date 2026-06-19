@@ -67,6 +67,13 @@
                         <xsl:with-param name="has-tar" select="."/>
                 </xsl:call-template>
         </xsl:for-each> 
+        <xsl:for-each select=".//userinput[contains(text(), 'tar ') 
+                and contains(substring-after(text(), 'tar '), ' -xvf ../')]">
+                <xsl:call-template name="tar-source-details">
+                        <xsl:with-param name="has-tar" select="."/>
+                        <xsl:with-param name="tar-cmd" select="concat(' -xvf ', '../')"/>
+                </xsl:call-template>
+        </xsl:for-each> 
 
         <xsl:text>===&#xA;</xsl:text>
 
@@ -119,7 +126,8 @@
 
 <xsl:template name="tar-source-details">
         <xsl:param name="has-tar"/>
-        <xsl:variable name="t1" select="substring-after($has-tar, 'tar -xf ../')"/>
+        <xsl:param name="tar-cmd" select="concat('tar -xf', ' ../')"/>
+        <xsl:variable name="t1" select="substring-after($has-tar, $tar-cmd)"/>
         <xsl:variable name="tar-file"> 
                 <xsl:call-template name="tar-filename">
                         <xsl:with-param name="input" select="$t1"/>
@@ -129,7 +137,7 @@
                 <xsl:with-param name="section" select="'packages'"/>
                 <xsl:with-param name="file" select="$tar-file"/>
         </xsl:call-template>
-        <xsl:if test="contains($t1, 'tar -xf ../')">
+        <xsl:if test="contains($t1, $tar-cmd)">
                 <xsl:call-template name="tar-source-details">
                         <xsl:with-param name="has-tar" select="$t1"/>
                 </xsl:call-template>

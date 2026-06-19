@@ -1,0 +1,3 @@
+package_filter() {
+        sed -e '/mv .*\/man8\/chroot/i \ \ \ \ mkdir -p $pkgdir/usr/share/man/man8'
+}

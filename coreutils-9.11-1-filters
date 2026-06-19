@@ -1,0 +1,4 @@
+# This is needed for some perl tests 
+# but will be replaced by inetutils
+# so this package mustn't own it
+printf 'userfiles+=( "/usr/bin/hostname" "usr/share/man/man1/hostname.1" )\n'

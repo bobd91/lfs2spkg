@@ -1,0 +1,4 @@
+package_filter() {
+        cat -
+        printf '    ln -sv gcc $pkgdir/usr/bin/cc\n'
+}

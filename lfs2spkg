@@ -2,16 +2,19 @@
 
 # shellcheck disable=SC2016 # we have lots of $.... in single quotes
 
-set -e
-
 declare -A packages
+declare -A missing_sources
 
 sources=()
 md5sums=()
+added_packages=()
+
 have_marker=""
 marker_val=""
 
 builddir=$LFS/var/lib/spkg/build
+archivedir=$LFS/var/lib/spkg/archive/build
+srcdir=$LFS/sources
 
 fail() {
         >&2 echo "$@"
@@ -19,6 +22,7 @@ fail() {
 }
 
 [[ -d $builddir ]] || fail 'spkg build directory missing'
+[[ -d $archivedir ]] || fail 'spkg archive build directory missing'
 
 is_marker_set() {
         [[ $have_marker = 'yes' ]]
@@ -120,7 +124,7 @@ filter_code() {
                 fi
                 if [[ -z $heredoc ]]; then
                         printf '    %s\n' "$line"
-                        if [[ $line =~ '<< "EOF"'$ ]]; then
+                        if [[ $line =~ '<< "EOF"'$  || $line =~ '<< EOF'$ ]]; then
                                 heredoc='heredoc'
                         fi
                 else
@@ -153,7 +157,8 @@ spkg_package_filter() {
                 -e 's|ln -\([^rs]*\)s\([^r ]*\) $pkgdir/|ln -\1s\2 /|g' \
                 -e 's|DESTDIR=$LFS||g' \
                 -e 's|make\(.*\) install|make DESTDIR=$pkgdir\1 install|g' \
-                -e 's|ninja\(.*\) install|DESTDIR=$pkgdir ninja\1 install|g'
+                -e 's|ninja\(.*\) install|DESTDIR=$pkgdir ninja\1 install|g' \
+                -e 's|pip3 install \(.*\)|pip3 install --root $pkgdir --no-warn-script-location \1|' 
 }
 
 filter_package_code() {
@@ -196,8 +201,17 @@ process_code() {
 }
 
 add_source() {
+        local md5
+
         sources+=("${1:?}")
         md5sums+=("${2:?}")
+        src=$srcdir/${1##*/}
+
+        if [[ -f "$src" ]]; then
+                md5=( $(md5sum "$src") )
+                [[ $2 == $md5 ]] && return
+        fi
+        missing_sources[$1]=$2
 }
 
 end_sources() {
@@ -239,9 +253,7 @@ next_package_release() {
 
 begin_package() {
         package_spec="$package_name-$package_version-$package_release"
-        [[ ! -d $builddir/$package_spec ]] || fail "Build directory exists for $package_spec"
-        mkdir "$builddir/$package_spec"
-        package_file="$builddir/$package_spec/SPKGBUILD"
+        package_file="pkg/$package_spec.SPKGBUILD"
 
         cat << EOF > "$package_file"
 pkgname=$package_name
@@ -297,11 +309,29 @@ process_package() {
         } >> "$package_file"
 }
 
+copy_package() {
+        build_file="$package_spec/SPKGBUILD"
+        if [[ -d $builddir/$package_spec ]]; then
+                cmp -s $package_file $builddir/$build_file && return
+        else 
+                if [[ -d $archivedir/$package_spec ]]; then
+                        cmp -s $package_file $archivedir/$build_file && return
+                fi
+                mkdir -p "$builddir/$package_spec"
+        fi
+
+        added_packages+=( "$package_spec" )
+
+        cp $package_file $builddir/$build_file
+        echo "spkg build $package_spec && spkg install -y $package_spec"
+}
+
 process_packages() {
         while consume_header_if 'package'; do
                 process_package
                 consume_footer
-                echo "spkg build $package_spec && spkg install -y $package_spec"
+
+                copy_package
         done
 }
 
@@ -312,8 +342,6 @@ begin_chapter() {
 #!/usr/bin/env bash
 # lfs2spkg build/install file for
 # $chapter_title
-
-set -e
 
 EOF
 
@@ -338,10 +366,49 @@ process_chapters() {
         done
 }
 
+download_missing_sources() {
+        local src md5_expected md5
+
+        (( ${#missing_sources[@]} )) || return
+
+        pushd $srcdir
+
+        echo "Downloading ${#missing_sources[@]} packages..."
+        for src in "${!missing_sources[@]}"; do
+                srcfile=${src##*/}
+                [[ -f $srcfile ]] && rm $srcfile
+                wget $src
+                md5_expected="${missing_sources[$src]}"
+                md5=( $(md5sum $srcfile) )
+                md5_actual=${md5[0]}
+                [[ $md5_expected == $md5_actual ]] && continue
+                printf 'Downloaded package %s has md5sum=%s, expected %s\n' \
+                        $srcfile $md5_actual $md5_expected
+        done
+
+        popd
+}
+
+print_added_packages() {
+        if (( ${#added_packages[@]} )); then
+                printf 'Added packages...\n'
+                printf '%s\n' "${added_packages[@]}"
+        else
+                printf 'No packages added\n'
+        fi
+}
+
 process_lfs2spkg() {
+        rm -f pkg/*.SPKGBUILD
+
         if consume_header 'lfs2spkg'; then
                 process_chapters
         fi
+        
+        download_missing_sources
+
+        print_added_packages
+
 }
 
 if [[ ! -f profiledbook.xml ]]; then

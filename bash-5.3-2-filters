@@ -1,0 +1,4 @@
+package_filter() {
+        cat -
+        printf '    ln -sv bash $pkgdir/bin/sh\n'
+}
